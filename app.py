@@ -77,3 +77,4 @@ def serve_audio(filename):
 if __name__ == "__main__":
     print("🚀 Flaskサーバー起動中 http://0.0.0.0:5001")
     app.run(debug=True, port=5001, host="0.0.0.0")
+# 再デプロイ用のダミーコメント
