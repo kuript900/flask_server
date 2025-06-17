@@ -1,3 +1,3 @@
 flask
-flask-cors
 edge-tts
+flask-cors==4.0.0
