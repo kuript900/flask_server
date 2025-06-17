@@ -25,14 +25,16 @@ VOICE_MAP = {
     "de": "de-DE-ConradNeural"
 }
 
-@app.route("/translate_and_generate", methods=["POST"])
+@app.route("/api/translate", methods=["POST"])
 def translate_and_generate():
     data = request.get_json()
     print("✅ リクエスト受信:", data)
 
     text = data.get("text")
-    source_lang = data.get("source_lang")
-    target_lang = data.get("target_lang")
+    source_lang = data.get("from_lang")
+    target_lang = data.get("to_lang")
+    repeat = data.get("repeat", 1)
+    rate = data.get("rate", "1.0")
 
     if not text or not source_lang or not target_lang:
         print("❌ パラメータ不足")
@@ -52,10 +54,11 @@ def translate_and_generate():
     save_path = os.path.join(SAVE_DIR, file_name)
 
     # 音声合成
-    voice = VOICE_MAP.get(target_lang, target_lang)  # fallback に lang_code
+    voice = VOICE_MAP.get(target_lang, target_lang)
     try:
-        print("🔄 音声生成開始:", voice)
-        asyncio.run(synthesize_audio(translated, voice, save_path))
+        print(f"🔄 音声生成開始: {voice}, rate={rate}, repeat={repeat}")
+        full_text = (" " + translated) * int(repeat)
+        asyncio.run(synthesize_audio(full_text.strip(), voice, save_path, rate))
         print("✅ 音声生成完了:", save_path)
     except Exception as e:
         print("❌ 音声生成エラー:", str(e))
@@ -63,12 +66,12 @@ def translate_and_generate():
 
     return jsonify({
         "translated_text": translated,
-        "audio_filename": file_name
+        "audio_url": f"https://flask-server-beqj.onrender.com/static/audio/{file_name}"
     })
 
-async def synthesize_audio(text, voice_name, save_path):
+async def synthesize_audio(text, voice_name, save_path, rate):
     communicate = edge_tts.Communicate(text, voice_name)
-    await communicate.save(save_path)
+    await communicate.save(save_path, rate=rate)
 
 @app.route("/static/audio/<filename>")
 def serve_audio(filename):
@@ -77,4 +80,3 @@ def serve_audio(filename):
 if __name__ == "__main__":
     print("🚀 Flaskサーバー起動中 http://0.0.0.0:5001")
     app.run(debug=True, port=5001, host="0.0.0.0")
-# 再デプロイ用のダミーコメント
