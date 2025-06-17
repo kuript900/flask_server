@@ -4,10 +4,16 @@ import uuid
 import os
 import asyncio
 import edge_tts
-from deep_translator import GoogleTranslator
+from google.cloud import translate_v2 as translate
+
+# Google翻訳APIの認証情報ファイルを指定
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "flask_server/credentials.json"
 
 app = Flask(__name__)
 CORS(app)
+
+# Google Cloud Translation クライアント初期化
+translate_client = translate.Client()
 
 # 音声保存ディレクトリ
 SAVE_DIR = "static/audio"
@@ -37,7 +43,12 @@ def translate_text():
         return jsonify({"error": "Missing required parameters"}), 400
 
     try:
-        translated = GoogleTranslator(source=from_lang, target=to_lang).translate(text)
+        result = translate_client.translate(
+            text,
+            source_language=from_lang,
+            target_language=to_lang
+        )
+        translated = result["translatedText"]
         print("✅ 翻訳成功:", translated)
         return jsonify({"translated_text": translated})
     except Exception as e:
@@ -65,7 +76,16 @@ def generate_audio():
     try:
         full_text = (text + " ") * repeat
         communicate = edge_tts.Communicate(full_text.strip(), voice)
-        communicate.rate = f"+{int((float(rate) - 1) * 100)}%"  # 1.0 → +0%, 1.2 → +20%
+
+        # 修正済み：読み上げ速度（1.5 → +50%、0.8 → -20%）
+        rate_percent = int((float(rate) - 1.0) * 100)
+        if rate_percent > 0:
+            communicate.rate = f"+{rate_percent}%"
+        elif rate_percent < 0:
+            communicate.rate = f"{rate_percent}%"
+        else:
+            communicate.rate = "0%"
+
         asyncio.run(communicate.save(file_path))
         print("✅ 音声生成成功:", file_path)
         return jsonify({
