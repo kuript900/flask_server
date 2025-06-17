@@ -1,5 +1,7 @@
 flask
 edge-tts
 flask-cors
+deep-translator
+
 
 
