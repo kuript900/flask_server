@@ -37,6 +37,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_tts: ^3.8.5
   translator: ^0.1.7
+  audioplayers: ^5.2.1
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:
