@@ -1,63 +1,68 @@
+# flask_server/app.py
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import uuid
-import edge_tts
+from edge_tts import Communicate
 import asyncio
 from google.cloud import translate_v2 as translate
 
-# 環境変数 GOOGLE_APPLICATION_CREDENTIALS を設定済みであることを想定
-# credentials.json へのパスを指定（Renderでは自動設定）
-
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app)
 
 translate_client = translate.Client()
+
+@app.route("/")
+def index():
+    return "Flask server is running!"
 
 @app.route("/api/translate", methods=["POST"])
 def translate_text():
     data = request.json
-    text = data.get("text", "")
-    source_lang = data.get("from", "auto")
-    target_lang = data.get("to", "ja")
-
-    result = translate_client.translate(
-        text,
-        source_language=source_lang,
-        target_language=target_lang,
-        format_='text'
-    )
+    text = data["text"]
+    source = data["from"]
+    target = data["to"]
+    result = translate_client.translate(text, source_language=source, target_language=target)
     return jsonify({"translated_text": result["translatedText"]})
 
+
 @app.route("/api/tts", methods=["POST"])
-def tts():
+def generate_tts():
     data = request.json
-    text = data.get("text", "")
-    lang = data.get("lang", "en")
-    speed = float(data.get("speed", 1.0))
-    repeat = int(data.get("repeat", 1))
+    text = data["text"]
+    lang = data["lang"]
+    rate = data.get("rate", 1.0)
+    repeat = data.get("repeat", 1)
+
+    output_dir = "static/audio"
+    os.makedirs(output_dir, exist_ok=True)
+    file_id = str(uuid.uuid4())
+    output_path = os.path.join(output_dir, f"{file_id}.mp3")
 
     voice_map = {
+        "en": "en-US-AriaNeural",
         "ja": "ja-JP-NanamiNeural",
-        "en": "en-US-JennyNeural",
-        "zh": "zh-CN-XiaoxiaoNeural",
+        "es": "es-ES-ElviraNeural",
         "fr": "fr-FR-DeniseNeural",
         "de": "de-DE-KatjaNeural",
-        "es": "es-ES-ElviraNeural",
+        "zh-CN": "zh-CN-XiaoxiaoNeural"
     }
-    voice = voice_map.get(lang, "en-US-JennyNeural")
 
-    filename = f"{uuid.uuid4().hex}.mp3"
-    filepath = os.path.join("static", "audio", filename)
-    text_to_speak = (text + "。") * repeat
+    voice = voice_map.get(lang, "en-US-AriaNeural")
+    communicate = Communicate(text, voice=voice, rate=f"{int((rate - 1.0) * 100)}%")
 
-    async def generate():
-        communicate = edge_tts.Communicate(text_to_speak, voice)
-        await communicate.save(filepath)
+    async def save_audio():
+        with open(output_path, "wb") as f:
+            for _ in range(repeat):
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        f.write(chunk["data"])
 
-    asyncio.run(generate())
+    asyncio.run(save_audio())
 
-    return jsonify({"audio_url": f"https://flask-server-beqj.onrender.com/static/audio/{filename}"})
+    return jsonify({
+        "audio_url": f"https://flask-server-beqj.onrender.com/static/audio/{file_id}.mp3"
+    })
 
 if __name__ == "__main__":
     app.run(debug=True)
