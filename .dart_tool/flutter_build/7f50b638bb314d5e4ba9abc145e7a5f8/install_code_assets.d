@@ -1,0 +1,1 @@
+ C:\\Users\\kurip\\multi_translator_app\\.dart_tool\\flutter_build\\7f50b638bb314d5e4ba9abc145e7a5f8\\native_assets.json: 

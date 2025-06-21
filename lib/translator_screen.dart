@@ -1,3 +1,4 @@
+// lib/screens/translator_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -13,169 +14,164 @@ class TranslatorScreen extends StatefulWidget {
 class _TranslatorScreenState extends State<TranslatorScreen> {
   final _textController = TextEditingController();
   String translatedText = '';
+  String? _selectedFromLang = 'en';
+  String? _selectedToLang = 'ja';
+  double _speechRate = 1.0;
   int _repeatCount = 1;
-  String _selectedFromLang = '日本語';
-  String _selectedToLang = '英語';
-  String _selectedRate = '1.0';
 
-  final Map<String, String> langCodeMap = {
-    '日本語': 'ja',
-    '英語': 'en',
-    'フランス語': 'fr',
-    'スペイン語': 'es',
-    'ドイツ語': 'de',
-    'ポルトガル語': 'pt',
-  };
+  final List<Map<String, String>> _languageOptions = [
+    {'code': 'en', 'label': 'English'},
+    {'code': 'ja', 'label': 'Japanese'},
+    {'code': 'es', 'label': 'Spanish'},
+    {'code': 'fr', 'label': 'French'},
+    {'code': 'de', 'label': 'German'},
+    {'code': 'zh-CN', 'label': 'Chinese'},
+  ];
 
-  final List<String> speedRates = ['0.8', '1.0', '1.2', '1.5'];
+  Future<void> _translateText() async {
+    final response = await http.post(
+      Uri.parse('https://flask-server-beqj.onrender.com/api/translate'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'text': _textController.text,
+        'from': _selectedFromLang,
+        'to': _selectedToLang,
+      }),
+    );
 
-  Future<void> translateText() async {
-    final text = _textController.text.trim();
-    if (text.isEmpty) return;
-
-    final from = langCodeMap[_selectedFromLang]!;
-    final to = langCodeMap[_selectedToLang]!;
-
-    final uri = Uri.parse('https://flask-server-beqj.onrender.com/api/translate');
-    try {
-      final res = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'text': text,
-          'from_lang': from,
-          'to_lang': to,
-        }),
-      );
-
-      final json = jsonDecode(res.body);
-      if (json['error'] != null) {
-        print('❌ 通信エラー (翻訳): ${json['error']}');
-        return;
-      }
-
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
       setState(() {
-        translatedText = json['translated_text'];
+        translatedText = data['translated_text'];
       });
-    } catch (e) {
-      print('❌ 通信エラー (翻訳): $e');
+    } else {
+      setState(() {
+        translatedText = 'Translation failed';
+      });
     }
   }
 
-  Future<void> playAudio() async {
-    final to = langCodeMap[_selectedToLang]!;
-    final uri = Uri.parse('https://flask-server-beqj.onrender.com/api/tts');
+  Future<void> _playAudio() async {
+    final response = await http.post(
+      Uri.parse('https://flask-server-beqj.onrender.com/api/tts'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'text': translatedText,
+        'lang': _selectedToLang,
+        'rate': _speechRate,
+        'repeat': _repeatCount,
+      }),
+    );
 
-    try {
-      final res = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'text': translatedText,
-          'lang': to,
-          'repeat': _repeatCount,
-          'rate': _selectedRate,
-        }),
-      );
-
-      final json = jsonDecode(res.body);
-      if (json['error'] != null) {
-        print('❌ 通信エラー (音声): ${json['error']}');
-        return;
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final url = data['audio_url'];
+      if (await canLaunch(url)) {
+        await launch(url);
       }
-
-      final audioUrl = json['audio_url'];
-      if (await canLaunchUrl(Uri.parse(audioUrl))) {
-        await launchUrl(Uri.parse(audioUrl));
-      } else {
-        print('再生できません: $audioUrl');
-      }
-    } catch (e) {
-      print('❌ 通信エラー (音声): $e');
+    } else {
+      print('TTS failed');
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('🌐 翻訳＆音声再生アプリ')),
-      body: Padding(
+      appBar: AppBar(
+        title: const Text('Translator & Repeater'),
+      ),
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              const Text('翻訳する文章を入力'),
-              TextField(
-                controller: _textController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: '入力してください',
+        child: Column(
+          children: [
+            TextField(
+              controller: _textController,
+              decoration: const InputDecoration(labelText: 'Enter text'),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: _buildLanguageDropdown('From', true)),
+                const SizedBox(width: 8),
+                Expanded(child: _buildLanguageDropdown('To', false)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Text('Speed:'),
+                Expanded(
+                  child: Slider(
+                    value: _speechRate,
+                    min: 0.5,
+                    max: 1.5,
+                    divisions: 10,
+                    label: _speechRate.toStringAsFixed(1),
+                    onChanged: (value) {
+                      setState(() => _speechRate = value);
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButton<String>(
-                      value: _selectedFromLang,
-                      items: langCodeMap.keys.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                      onChanged: (val) => setState(() => _selectedFromLang = val!),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButton<String>(
-                      value: _selectedToLang,
-                      items: langCodeMap.keys.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                      onChanged: (val) => setState(() => _selectedToLang = val!),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Text('🔁 回数:'),
-                  const SizedBox(width: 8),
-                  DropdownButton<int>(
-                    value: _repeatCount,
-                    items: List.generate(10, (i) => i + 1)
-                        .map((e) => DropdownMenuItem(value: e, child: Text('$e回')))
-                        .toList(),
-                    onChanged: (val) => setState(() => _repeatCount = val!),
-                  ),
-                  const SizedBox(width: 20),
-                  const Text('⏩ 速度:'),
-                  const SizedBox(width: 8),
-                  DropdownButton<String>(
-                    value: _selectedRate,
-                    items: speedRates
-                        .map((e) => DropdownMenuItem(value: e, child: Text('${e}x')))
-                        .toList(),
-                    onChanged: (val) => setState(() => _selectedRate = val!),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ElevatedButton(
-                    onPressed: translateText,
-                    child: const Text('翻訳'),
-                  ),
-                  ElevatedButton(
-                    onPressed: playAudio,
-                    child: const Text('音声再生'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Text('翻訳結果: $translatedText'),
-            ],
-          ),
+              ],
+            ),
+            Row(
+              children: [
+                const Text('Repeat:'),
+                const SizedBox(width: 8),
+                DropdownButton<int>(
+                  value: _repeatCount,
+                  items: List.generate(10, (i) => i + 1)
+                      .map((n) => DropdownMenuItem(value: n, child: Text('$n')))
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) setState(() => _repeatCount = value);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _translateText,
+              child: const Text('Translate'),
+            ),
+            const SizedBox(height: 8),
+            Text(translatedText, style: const TextStyle(fontSize: 18)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _playAudio,
+              child: const Text('Play Audio'),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildLanguageDropdown(String label, bool isFrom) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label),
+        DropdownButton<String>(
+          value: isFrom ? _selectedFromLang : _selectedToLang,
+          isExpanded: true,
+          items: _languageOptions.map((lang) {
+            return DropdownMenuItem<String>(
+              value: lang['code'],
+              child: Text(lang['label']!),
+            );
+          }).toList(),
+          onChanged: (value) {
+            setState(() {
+              if (isFrom) {
+                _selectedFromLang = value;
+              } else {
+                _selectedToLang = value;
+              }
+            });
+          },
+        ),
+      ],
     );
   }
 }

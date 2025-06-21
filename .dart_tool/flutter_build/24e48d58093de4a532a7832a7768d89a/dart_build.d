@@ -1,0 +1,1 @@
+ C:\\Users\\kurip\\multi_translator_app\\.dart_tool\\flutter_build\\24e48d58093de4a532a7832a7768d89a\\dart_build_result.json: 
